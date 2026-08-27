@@ -99,7 +99,12 @@ export default function HeroSection() {
               {/* Floating Job Cards */}
               <div
                 className="float-animation absolute top-8 left-8 bg-white rounded-xl border border-brand-border shadow-sm p-4 w-64"
-                style={{ animation: "float 4s ease-in-out infinite" }}
+                style={{
+                  animationName: "float",
+                  animationDuration: "4s",
+                  animationTimingFunction: "ease-in-out",
+                  animationIterationCount: "infinite",
+                }}
               >
                 <div className="flex items-start gap-3">
                   <div className="h-10 w-10 rounded-lg bg-navy/10 flex items-center justify-center shrink-0">
@@ -127,7 +132,11 @@ export default function HeroSection() {
               <div
                 className="float-animation absolute top-36 right-6 bg-white rounded-xl border border-brand-border shadow-sm p-4 w-56"
                 style={{
-                  animation: "float 4s ease-in-out infinite 1s",
+                  animationName: "float",
+                  animationDuration: "4s",
+                  animationTimingFunction: "ease-in-out",
+                  animationIterationCount: "infinite",
+                  animationDelay: "1s",
                 }}
               >
                 <div className="flex items-start gap-3">
@@ -151,7 +160,11 @@ export default function HeroSection() {
               <div
                 className="float-animation absolute bottom-24 left-12 bg-white rounded-xl border border-brand-border shadow-sm p-4 w-60"
                 style={{
-                  animation: "float 4s ease-in-out infinite 2s",
+                  animationName: "float",
+                  animationDuration: "4s",
+                  animationTimingFunction: "ease-in-out",
+                  animationIterationCount: "infinite",
+                  animationDelay: "2s",
                 }}
               >
                 <div className="flex items-center gap-3">
@@ -173,7 +186,11 @@ export default function HeroSection() {
               <div
                 className="float-animation absolute bottom-8 right-8 bg-navy rounded-xl p-4 w-48 text-white shadow-lg"
                 style={{
-                  animation: "float 4s ease-in-out infinite 0.5s",
+                  animationName: "float",
+                  animationDuration: "4s",
+                  animationTimingFunction: "ease-in-out",
+                  animationIterationCount: "infinite",
+                  animationDelay: "0.5s",
                 }}
               >
                 <div className="text-2xl font-bold">10K+</div>

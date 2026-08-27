@@ -56,15 +56,24 @@ function OrbitRing({
         height: radius * 2,
         top: `calc(50% - ${radius}px)`,
         left: `calc(50% - ${radius}px)`,
-        animation: `orbit-rotate ${duration}s linear infinite`,
+        animationName: "orbit-rotate",
+        animationDuration: `${duration}s`,
+        animationTimingFunction: "linear",
+        animationIterationCount: "infinite",
         animationDirection: direction,
       }}
     >
       {icons.map((item, index) => {
         const angle = (360 / icons.length) * index;
         const rad = (angle * Math.PI) / 180;
-        const x = Math.cos(rad) * radius;
-        const y = Math.sin(rad) * radius;
+        
+        // Round to 2 decimal places to guarantee matching outputs on server and client
+        const xOffset = Number((Math.cos(rad) * radius - 18).toFixed(2));
+        const yOffset = Number((Math.sin(rad) * radius - 18).toFixed(2));
+        
+        const topVal = `calc(50% ${yOffset >= 0 ? "+" : "-"} ${Math.abs(yOffset)}px)`;
+        const leftVal = `calc(50% ${xOffset >= 0 ? "+" : "-"} ${Math.abs(xOffset)}px)`;
+        
         const Icon = item.icon;
 
         return (
@@ -72,11 +81,12 @@ function OrbitRing({
             key={item.label}
             className="orbit-icon absolute flex items-center justify-center"
             style={{
-              top: `calc(50% + ${y}px - 18px)`,
-              left: `calc(50% + ${x}px - 18px)`,
-              animation: `${
-                reverse ? "orbit-rotate" : "orbit-counter-rotate"
-              } ${duration}s linear infinite`,
+              top: topVal,
+              left: leftVal,
+              animationName: reverse ? "orbit-rotate" : "orbit-counter-rotate",
+              animationDuration: `${duration}s`,
+              animationTimingFunction: "linear",
+              animationIterationCount: "infinite",
             }}
             title={item.label}
           >

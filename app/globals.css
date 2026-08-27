@@ -156,13 +156,10 @@
 
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
-  .orbit-ring {
-    animation: none !important;
-  }
-  .orbit-icon {
-    animation: none !important;
-  }
+  .orbit-ring,
+  .orbit-icon,
   .float-animation {
-    animation: none !important;
+    animation-name: none !important;
+    animation-duration: 0s !important;
   }
 }
