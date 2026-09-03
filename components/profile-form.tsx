@@ -164,6 +164,22 @@ export default function ProfileForm({ profile, email }: ProfileFormProps) {
             </div>
           </div>
 
+          <div className="space-y-2">
+            <label
+              htmlFor="headline"
+              className="block text-sm font-medium text-navy"
+            >
+              Headline Profesional
+            </label>
+            <Input
+              id="headline"
+              name="headline"
+              defaultValue={profile?.headline || ""}
+              placeholder="Frontend Developer | UI/UX Enthusiast"
+              className="h-11 border-brand-border"
+            />
+          </div>
+
           <div className="grid sm:grid-cols-2 gap-5">
             <div className="space-y-2">
               <label

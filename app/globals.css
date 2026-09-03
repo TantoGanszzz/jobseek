@@ -154,6 +154,27 @@
   }
 }
 
+/* Skeleton loading animation */
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.skeleton {
+  animation: skeleton-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  background-color: var(--muted);
+  border-radius: 0.5rem;
+}
+
+/* Sidebar transitions */
+.sidebar-transition {
+  transition: width 200ms ease-in-out, padding 200ms ease-in-out, opacity 150ms ease-in-out;
+}
+
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
   .orbit-ring,
@@ -161,5 +182,11 @@
   .float-animation {
     animation-name: none !important;
     animation-duration: 0s !important;
+  }
+  .sidebar-transition {
+    transition: none !important;
+  }
+  .skeleton {
+    animation: none !important;
   }
 }

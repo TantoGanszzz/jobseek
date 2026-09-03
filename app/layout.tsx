@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
@@ -57,6 +58,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     // Supabase not configured yet — that's okay, show guest navbar
   }
 
+  // Check if current route is dashboard to hide footer
+  const headersList = await headers();
+  const pathname = headersList.get("x-next-pathname") || "";
+  const isDashboard = pathname.startsWith("/dashboard");
+
   return (
     <html
       lang="id"
@@ -65,7 +71,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <Navbar user={user} />
         <main className="flex-1">{children}</main>
-        <Footer />
+        {!isDashboard && <Footer />}
       </body>
     </html>
   );

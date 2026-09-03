@@ -13,6 +13,7 @@ export async function updateProfile(formData: FormData) {
   }
 
   const fullName = formData.get("full_name") as string;
+  const headline = formData.get("headline") as string;
   const phone = formData.get("phone") as string;
   const location = formData.get("location") as string;
   const bio = formData.get("bio") as string;
@@ -30,6 +31,7 @@ export async function updateProfile(formData: FormData) {
     .upsert({
       id: user.id,
       full_name: fullName,
+      headline: headline || null,
       phone,
       location,
       bio,

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import NavbarProfileMenu from "./navbar-profile-menu";
+import { signOut } from "@/app/actions/auth";
 
 interface NavbarProps {
   user: {
@@ -16,15 +17,14 @@ interface NavbarProps {
 }
 
 const navLinks = [
-  { href: "/", label: "Home" },
   { href: "/find-jobs", label: "Find Jobs" },
-  { href: "#companies", label: "Companies" },
-  { href: "#resources", label: "Career Resources" },
-  { href: "#about", label: "About" },
+  { href: "#resources", label: "Career" },
+  { href: "#about", label: "Resources" },
 ];
 
 export default function Navbar({ user }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   return (
     <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-sm border-b border-brand-border">
@@ -44,7 +44,7 @@ export default function Navbar({ user }: NavbarProps) {
           {navLinks.map((link) => (
             <Link
               key={link.href}
-              href={user ? (link.href === "/find-jobs" ? "/dashboard/find-jobs" : link.href) : link.href}
+              href={user && link.href === "/find-jobs" ? "/dashboard/find-jobs" : link.href}
               className="px-4 py-2 text-sm font-medium text-navy/70 hover:text-navy rounded-lg transition-colors"
             >
               {link.label}
@@ -68,7 +68,7 @@ export default function Navbar({ user }: NavbarProps) {
               </Link>
               <Link href="/register">
                 <Button className="bg-navy text-white hover:bg-navy-light font-medium cursor-pointer">
-                  Get Started
+                  Register
                 </Button>
               </Link>
             </>
@@ -98,7 +98,7 @@ export default function Navbar({ user }: NavbarProps) {
             {navLinks.map((link) => (
               <Link
                 key={link.href}
-                href={user ? (link.href === "/find-jobs" ? "/dashboard/find-jobs" : link.href) : link.href}
+                href={user && link.href === "/find-jobs" ? "/dashboard/find-jobs" : link.href}
                 className="block px-4 py-3 text-sm font-medium text-navy/70 hover:text-navy hover:bg-light-bg rounded-lg transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
@@ -113,6 +113,13 @@ export default function Navbar({ user }: NavbarProps) {
                     {user.full_name || user.email}
                   </div>
                   <Link
+                    href="/dashboard/profile"
+                    className="block px-4 py-3 text-sm text-navy/70 hover:text-navy hover:bg-light-bg rounded-lg transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Profile
+                  </Link>
+                  <Link
                     href="/dashboard"
                     className="block px-4 py-3 text-sm text-navy/70 hover:text-navy hover:bg-light-bg rounded-lg transition-colors"
                     onClick={() => setMobileMenuOpen(false)}
@@ -120,20 +127,23 @@ export default function Navbar({ user }: NavbarProps) {
                     Dashboard
                   </Link>
                   <Link
-                    href="/dashboard/profile"
+                    href="/dashboard/settings"
                     className="block px-4 py-3 text-sm text-navy/70 hover:text-navy hover:bg-light-bg rounded-lg transition-colors"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    My Profile
+                    Settings
                   </Link>
-                  <form action="/api/auth/signout" method="POST">
-                    <button
-                      type="submit"
-                      className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      Sign Out
-                    </button>
-                  </form>
+                  <button
+                    type="button"
+                    disabled={signingOut}
+                    className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                    onClick={async () => {
+                      setSigningOut(true);
+                      await signOut();
+                    }}
+                  >
+                    {signingOut ? "Signing out..." : "Sign Out"}
+                  </button>
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
@@ -147,7 +157,7 @@ export default function Navbar({ user }: NavbarProps) {
                   </Link>
                   <Link href="/register" onClick={() => setMobileMenuOpen(false)}>
                     <Button className="w-full bg-navy text-white hover:bg-navy-light font-medium cursor-pointer">
-                      Get Started
+                      Register
                     </Button>
                   </Link>
                 </div>
