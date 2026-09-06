@@ -16,8 +16,7 @@ const USER_PROFILE_COLUMNS = [
 const HRD_PROFILE_COLUMNS = ["full_name", "phone", "position", "avatar_url"] as const;
 
 const COMPANY_COLUMNS = [
-  "name", "logo_url", "industry", "company_size", "company_type", "location",
-  "city", "province", "website", "description",
+  "name", "logo_url", "industry", "company_size", "location", "website", "description",
 ] as const;
 
 const COMPANY_PREF_COLUMNS = [
@@ -207,12 +206,12 @@ export async function saveHrdStep(
   if (Object.keys(companyClean).length > 0) {
     // Find/create the HRD's company
     let companyId: string | null = null;
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("company_id")
-      .eq("id", user.id)
-      .single();
-    companyId = profile?.company_id || null;
+    const { data: company } = await supabase
+      .from("companies")
+      .select("id")
+      .eq("created_by", user.id)
+      .maybeSingle();
+    companyId = company?.id || null;
 
     if (!companyId) {
       const name = (companyClean.name as string) || "My Company";
@@ -221,18 +220,16 @@ export async function saveHrdStep(
         .insert({
           name,
           created_by: user.id,
-          status: "pending",
           ...companyClean,
         })
         .select("id")
         .single();
       if (error) return { error: error.message };
       companyId = created.id;
-      await supabase.from("profiles").update({ company_id: companyId }).eq("id", user.id);
     } else {
       const { error } = await supabase
         .from("companies")
-        .update({ ...companyClean, status: "pending" })
+        .update(companyClean)
         .eq("id", companyId)
         .eq("created_by", user.id);
       if (error) return { error: error.message };
@@ -255,22 +252,15 @@ export async function completeHrdOnboarding() {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Not authenticated" };
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("company_id")
-    .eq("id", user.id)
-    .single();
+  const { data: company } = await supabase
+    .from("companies")
+    .select("id")
+    .eq("created_by", user.id)
+    .maybeSingle();
 
-  if (!profile?.company_id) {
+  if (!company) {
     return { error: "Company information is required before completing onboarding." };
   }
-
-  // Company remains "pending" until an admin approves it.
-  await supabase
-    .from("companies")
-    .update({ status: "pending" })
-    .eq("id", profile.company_id)
-    .eq("created_by", user.id);
 
   await supabase
     .from("profiles")
