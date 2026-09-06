@@ -1,38 +1,36 @@
 import Link from "next/link";
 import { getDashboardUser } from "@/lib/dashboard-helpers";
-import { getApplicants, getJobs } from "@/lib/hrd/services";
-import { getTestAssignmentsByOwner } from "@/lib/hrd/store";
+import { createClient } from "@/lib/supabase/server";
 import PageHeader from "@/components/hrd/page-header";
 import EmptyState from "@/components/hrd/empty-state";
 import { ClipboardCheck, CheckCircle2, XCircle, Clock, FileQuestion, Code2, ArrowRight } from "lucide-react";
 
 export default async function CompanyTestsPage() {
   const dashUser = await getDashboardUser();
-  const jobs = getJobs(dashUser.id);
-  const applicants = getApplicants(dashUser.id);
-  const assignments = getTestAssignmentsByOwner(dashUser.id);
+  const supabase = await createClient();
 
-  const rows = assignments.map((a) => {
-    const applicant = applicants.find((x) => x.id === a.applicationId);
-    const job = jobs.find((j) => j.id === a.jobId);
-    return {
-      id: a.id,
-      applicantId: applicant?.id,
-      kind: a.kind,
-      candidateName: applicant?.candidateName ?? "Candidate",
-      jobTitle: job?.title ?? "Position",
-      minScore: a.minScore,
-      score: a.score,
-      passed: a.passed,
-      status: a.status,
-      assignedAt: a.assignedAt,
-      completedAt: a.completedAt,
-      deadline: a.deadline,
-    };
-  });
+  const { data: assignments } = await supabase
+    .from("test_assignments")
+    .select("*, profiles:candidate_id(full_name), jobs(title)")
+    .order("created_at", { ascending: false });
+
+  const rows = (assignments || []).map((a: any) => ({
+    id: a.id,
+    applicantId: a.application_id,
+    kind: a.kind,
+    candidateName: a.profiles?.full_name ?? "Candidate",
+    jobTitle: a.jobs?.title ?? "Position",
+    minScore: a.min_score,
+    score: a.score,
+    passed: a.passed,
+    status: a.status,
+    assignedAt: a.created_at,
+    completedAt: a.completed_at,
+    deadline: a.deadline,
+  }));
 
   const sorted = [...rows].sort(
-    (a, b) =>
+    (a: any, b: any) =>
       (a.status === "submitted" ? 0 : 1) - (b.status === "submitted" ? 0 : 1) ||
       b.assignedAt.localeCompare(a.assignedAt)
   );

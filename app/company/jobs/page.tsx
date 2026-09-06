@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getDashboardUser } from "@/lib/dashboard-helpers";
-import { getJobs } from "@/lib/hrd/services";
+import { createClient } from "@/lib/supabase/server";
 import PageHeader from "@/components/hrd/page-header";
 import EmptyState from "@/components/hrd/empty-state";
 import { StatusBadge } from "@/components/status-badge";
@@ -14,10 +14,22 @@ export default async function CompanyJobsPage({
 }) {
   const params = await searchParams;
   const dashUser = await getDashboardUser();
-  const jobs = getJobs(dashUser.id, {
-    search: params.search ?? "",
-    status: params.status ?? "all",
-  });
+  const supabase = await createClient();
+
+  const { data: company } = await supabase.from("companies").select("id").eq("created_by", dashUser.id).maybeSingle();
+  
+  let query = supabase.from("jobs").select("*").order("created_at", { ascending: false });
+  if (company) query = query.eq("company_id", company.id);
+  if (params.status && params.status !== "all") query = query.eq("status", params.status);
+  if (params.search) query = query.ilike("title", `%${params.search}%`);
+  
+  const { data: jobsData } = await query;
+  const jobs = (jobsData || []).map((j: any) => ({
+    ...j,
+    jobType: j.job_type,
+    workMode: j.work_mode,
+    deadline: j.deadline ? new Date(j.deadline).toLocaleDateString() : null,
+  }));
 
   const statusFilter = params.status ?? "all";
 
@@ -92,7 +104,7 @@ export default async function CompanyJobsPage({
                 </tr>
               </thead>
               <tbody>
-                {jobs.map((job) => (
+                {jobs.map((job: any) => (
                   <tr key={job.id} className="border-b border-slate-100 last:border-0">
                     <td className="py-4 pr-4 font-medium text-slate-900">{job.title}</td>
                     <td className="py-4 pr-4 text-slate-600">{job.location || "-"}</td>

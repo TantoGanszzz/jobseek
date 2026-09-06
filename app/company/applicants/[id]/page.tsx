@@ -1,15 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDashboardUser } from "@/lib/dashboard-helpers";
-import { getApplicantDetail } from "@/lib/hrd/services";
-import { getApplicantThread, getTestAssignmentById } from "@/lib/hrd/store";
+import { createClient } from "@/lib/supabase/server";
 import { ApplicantStatusBadge } from "@/components/applicant-status-badge";
 import ApplicantActions from "@/components/hrd/applicant-actions";
 import ScheduleInterviewForm from "@/components/hrd/schedule-interview-form";
 import SendTestForm from "@/components/hrd/send-test-form";
 import ReviewChallengeForm from "@/components/hrd/review-challenge-form";
-import { ArrowLeft, Briefcase, MapPin, Calendar, ListChecks, MessageSquare, CheckCircle2, XCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ArrowLeft, Briefcase, MapPin, Calendar, ListChecks, CheckCircle2, XCircle } from "lucide-react";
 
 export default async function CompanyApplicantDetailPage({
   params,
@@ -18,15 +16,57 @@ export default async function CompanyApplicantDetailPage({
 }) {
   const { id } = await params;
   const dashUser = await getDashboardUser();
-  const { applicant, job } = getApplicantDetail(id);
+  const supabase = await createClient();
 
-  if (!applicant || applicant.createdBy !== dashUser.id) notFound();
+  // Get application with profile and job
+  const { data: application } = await supabase
+    .from("applications")
+    .select("*, profiles!inner(full_name, headline, location, bio, skills, resume_url, portfolio_url, github_url, linkedin_url, phone, education_level, university, major), jobs!inner(id, title, company_id, companies!inner(created_by))")
+    .eq("id", id)
+    .single();
 
-  const score = applicant.matchScore;
-  const minScore = applicant.qualMinScore ?? 70;
-  const thread = job ? getApplicantThread(job.createdBy, applicant.userId) : null;
-  const testAssignment = applicant.testAssignmentId ? getTestAssignmentById(applicant.testAssignmentId) : null;
-  const hasInterview = !!applicant.interview;
+  if (!application || (application as any).jobs?.companies?.created_by !== dashUser.id) notFound();
+
+  const profile = (application as any).profiles;
+  const job = (application as any).jobs;
+
+  // Get test assignment if exists
+  const { data: testAssignment } = await supabase
+    .from("test_assignments")
+    .select("*")
+    .eq("application_id", id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // Get interview if exists
+  const { data: interview } = await supabase
+    .from("interviews")
+    .select("*")
+    .eq("application_id", id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // Build applicant object for existing components
+  const applicant = {
+    id: application.id,
+    status: application.status,
+    candidateName: profile?.full_name || "Candidate",
+    candidateHeadline: profile?.headline || null,
+    candidateLocation: profile?.location || null,
+    candidateBio: profile?.bio || null,
+    candidateSkills: profile?.skills || [],
+    candidateResumeUrl: profile?.resume_url || null,
+    candidatePortfolioUrl: profile?.portfolio_url || null,
+    candidateEducation: profile?.education_level || null,
+    candidateSchool: profile?.university || null,
+    candidateMajor: profile?.major || null,
+    appliedAt: application.applied_at,
+    matchScore: application.match_score || null,
+    qualScore: application.qual_score || null,
+    qualMinScore: 70,
+  };
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -78,7 +118,7 @@ export default async function CompanyApplicantDetailPage({
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Skills</h2>
               <div className="mt-2 flex flex-wrap gap-2">
-                {applicant.candidateSkills.map((skill) => (
+                {applicant.candidateSkills.map((skill: string) => (
                   <span key={skill} className="rounded border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs text-slate-700">{skill}</span>
                 ))}
               </div>
@@ -100,8 +140,8 @@ export default async function CompanyApplicantDetailPage({
         <div className="mt-4 grid max-w-md grid-cols-2 gap-3">
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs text-slate-500">Career Match</p>
-            <p className={`mt-1 text-xl font-bold ${score != null && score >= minScore ? "text-green-700" : "text-red-600"}`}>
-              {score != null ? `${score}%` : "Pending"}
+            <p className={`mt-1 text-xl font-bold ${applicant.matchScore != null && applicant.matchScore >= applicant.qualMinScore ? "text-green-700" : "text-red-600"}`}>
+              {applicant.matchScore != null ? `${applicant.matchScore}%` : "Pending"}
             </p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -134,7 +174,7 @@ export default async function CompanyApplicantDetailPage({
                   <p className="mt-1 text-xs text-slate-500 whitespace-pre-line">Instructions: {testAssignment.instructions}</p>
                 )}
                 {testAssignment.deadline && (
-                  <p className="mt-1 text-xs text-slate-500">Deadline: {testAssignment.deadline}</p>
+                  <p className="mt-1 text-xs text-slate-500">Deadline: {new Date(testAssignment.deadline).toLocaleDateString()}</p>
                 )}
               </>
             )}
@@ -147,11 +187,11 @@ export default async function CompanyApplicantDetailPage({
 
             {testAssignment.kind === "challenge" && testAssignment.status === "submitted" && (
               <div className="mt-3">
-                <ReviewChallengeForm assignment={testAssignment} jobTitle={job?.title} />
+                <ReviewChallengeForm assignment={testAssignment as any} jobTitle={job?.title} />
               </div>
             )}
 
-            {testAssignment.status === "completed" && (
+            {(testAssignment.status === "completed" || testAssignment.status === "reviewed") && (
               <div className="mt-2 flex items-center gap-3">
                 <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
                   testAssignment.passed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
@@ -160,30 +200,30 @@ export default async function CompanyApplicantDetailPage({
                   {testAssignment.passed ? "Passed" : "Below minimum"}
                 </span>
                 <span className="text-sm text-slate-700">
-                  {testAssignment.score} / {testAssignment.minScore}
+                  {testAssignment.score} / {testAssignment.min_score}
                 </span>
-                {testAssignment.kind === "challenge" && testAssignment.reviewFeedback && (
-                  <span className="text-xs text-slate-500">· {testAssignment.reviewFeedback}</span>
+                {testAssignment.kind === "challenge" && testAssignment.feedback && (
+                  <span className="text-xs text-slate-500">· {testAssignment.feedback}</span>
                 )}
               </div>
             )}
           </div>
         )}
 
-        {hasInterview && (
+        {interview && (
           <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-blue-600" />
               <h3 className="text-sm font-semibold text-slate-900">Interview Scheduled</h3>
             </div>
-            <p className="mt-1 text-sm font-medium text-slate-800">{applicant.interview!.title}</p>
+            <p className="mt-1 text-sm font-medium text-slate-800">{interview.title}</p>
             <p className="text-sm text-slate-600">
-              {applicant.interview!.date}
-              {applicant.interview!.time ? ` at ${applicant.interview!.time}` : ""}
-              {applicant.interview!.durationMinutes ? ` · ${applicant.interview!.durationMinutes} minutes` : ""}
+              {interview.scheduled_date}
+              {interview.scheduled_time ? ` at ${interview.scheduled_time}` : ""}
+              {interview.duration_minutes ? ` · ${interview.duration_minutes} minutes` : ""}
             </p>
-            {applicant.interview!.location && (
-              <p className="text-sm text-slate-500">Location: {applicant.interview!.location}</p>
+            {interview.location && (
+              <p className="text-sm text-slate-500">Location: {interview.location}</p>
             )}
           </div>
         )}
@@ -205,23 +245,13 @@ export default async function CompanyApplicantDetailPage({
 
         <div className="mt-6">
           <h3 className="mb-2 text-sm font-semibold text-slate-900">Move candidate through</h3>
-          <ApplicantActions applicant={applicant} />
+          <ApplicantActions applicant={applicant as any} />
         </div>
 
         <div className="mt-6 border-t border-slate-100 pt-5">
           <h3 className="text-sm font-semibold text-slate-900">Interview & Test</h3>
           <ScheduleInterviewForm applicantId={applicant.id} />
           <SendTestForm applicantId={applicant.id} />
-        </div>
-
-        <div className="mt-5">
-          {thread && (
-            <Link href={`/company/messages?conv=${thread.id}`}>
-              <Button variant="outline" className="border-slate-200 text-slate-700 cursor-pointer">
-                <MessageSquare className="mr-2 h-4 w-4 text-blue-600" /> Message candidate
-              </Button>
-            </Link>
-          )}
         </div>
       </div>
     </div>

@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getJobById } from "@/lib/hrd/store";
 import { StatusBadge } from "@/components/status-badge";
-import { getApplicantsByOwner } from "@/lib/hrd/store";
 import UpdateJobStatusButton from "@/components/hrd/update-job-status-button";
 import { getDashboardUser } from "@/lib/dashboard-helpers";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function CompanyJobDetailPage({
   params,
@@ -13,11 +12,20 @@ export default async function CompanyJobDetailPage({
 }) {
   const { id } = await params;
   const dashUser = await getDashboardUser();
-  const job = getJobById(id);
+  const supabase = await createClient();
 
-  if (!job || job.createdBy !== dashUser.id) notFound();
+  const { data: job } = await supabase
+    .from("jobs")
+    .select("*, companies!inner(id, created_by)")
+    .eq("id", id)
+    .single();
 
-  const applicantCount = getApplicantsByOwner(dashUser.id).filter((a) => a.jobId === job.id).length;
+  if (!job || (job as any).companies?.created_by !== dashUser.id) notFound();
+
+  const { count: applicantCount } = await supabase
+    .from("applications")
+    .select("*", { count: "exact", head: true })
+    .eq("job_id", job.id);
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -30,7 +38,7 @@ export default async function CompanyJobDetailPage({
           <div>
             <h1 className="text-xl font-bold text-slate-900">{job.title}</h1>
             <p className="mt-1 text-sm text-slate-500">
-              {job.location || "Remote-friendly"} · {job.jobType} · {job.workMode} · {job.experienceLevel}
+              {job.location || "Remote-friendly"} · {job.job_type} · {job.work_mode} · {job.experience_level}
             </p>
           </div>
           <StatusBadge status={job.status} />
@@ -38,12 +46,12 @@ export default async function CompanyJobDetailPage({
 
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
           <span className="text-slate-500">Minimum qualification score:</span>
-          <span className="font-semibold text-slate-900">{job.minQualificationScore} / 100</span>
+          <span className="font-semibold text-slate-900">{job.min_qualification_score} / 100</span>
           {job.deadline && (
             <>
               <span className="text-slate-300">|</span>
               <span className="text-slate-500">Deadline:</span>
-              <span className="font-semibold text-slate-900">{job.deadline}</span>
+              <span className="font-semibold text-slate-900">{new Date(job.deadline).toLocaleDateString()}</span>
             </>
           )}
         </div>
@@ -51,12 +59,12 @@ export default async function CompanyJobDetailPage({
         <div className="mt-4 grid max-w-md grid-cols-2 gap-3">
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs text-slate-500">Applicants</p>
-            <p className="mt-1 text-xl font-bold text-slate-900">{applicantCount}</p>
+            <p className="mt-1 text-xl font-bold text-slate-900">{applicantCount || 0}</p>
           </div>
-          {job.salaryRange && (
+          {job.salary_range && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs text-slate-500">Salary Range</p>
-              <p className="mt-1 text-sm font-bold text-slate-900">{job.salaryRange}</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">{job.salary_range}</p>
             </div>
           )}
         </div>
@@ -82,22 +90,22 @@ export default async function CompanyJobDetailPage({
           </div>
         )}
 
-        {job.skills.length > 0 && (
+        {(job.skills || []).length > 0 && (
           <div className="mt-5">
             <h2 className="text-sm font-semibold text-slate-900">Required Skills</h2>
             <div className="mt-2 flex flex-wrap gap-2">
-              {job.skills.map((s) => (
+              {(job.skills || []).map((s: string) => (
                 <span key={s} className="rounded border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs text-slate-700">{s}</span>
               ))}
             </div>
           </div>
         )}
 
-        {job.preferredSkills.length > 0 && (
+        {(job.preferred_skills || []).length > 0 && (
           <div className="mt-4">
             <h2 className="text-sm font-semibold text-slate-900">Preferred Skills</h2>
             <div className="mt-2 flex flex-wrap gap-2">
-              {job.preferredSkills.map((s) => (
+              {(job.preferred_skills || []).map((s: string) => (
                 <span key={s} className="rounded border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs text-blue-700">{s}</span>
               ))}
             </div>
@@ -108,7 +116,7 @@ export default async function CompanyJobDetailPage({
           <Link href={`/company/applicants?job=${job.id}`} className="inline-block rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
             View Applicants
           </Link>
-          <UpdateJobStatusButton job={job} />
+          <UpdateJobStatusButton job={job as any} />
         </div>
       </div>
     </div>

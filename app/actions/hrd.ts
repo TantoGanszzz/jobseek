@@ -2,28 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import {
-  assignTest,
-  companyProfileFromMeta,
-  createAnnouncement,
-  createEvent,
-  createJob,
-  createProject,
-  createTask,
-  getConversationById,
-  getEmployeeForUser,
-  getOrCreateGeneralConversation,
-  getProjectById,
-  getTaskById,
-  notify,
-  reviewTest,
-  scheduleInterview,
-  sendMessage,
-  updateApplicantStatus as storeUpdateApplicantStatus,
-  updateJobStatus as storeUpdateJobStatus,
-  updateTaskStatus as storeUpdateTaskStatus,
-} from "@/lib/hrd/store";
-import type { JobPosting, Project, Task } from "@/lib/hrd/types";
 
 // ---------------------------------------------------------------
 // Auth guard helpers
@@ -125,12 +103,24 @@ export async function createJobAction(values: JobFormValues): Promise<ActionResu
   return { success: true, jobId: job.id };
 }
 
-export async function updateJobStatusAction(jobId: string, status: JobPosting["status"]): Promise<ActionResult> {
+export async function updateJobStatusAction(jobId: string, status: string): Promise<ActionResult> {
   const user = await getSessionUser();
   if (!user) return error("You must be signed in.");
   if (!isHrdOrAdmin(user)) return error("You do not have permission to change jobs.");
   if (!["draft", "active", "paused", "closed"].includes(status)) return error("Invalid job status.");
-  return error("Struktur data HRD/perusahaan belum tersedia di Supabase yang terhubung. Hubungi pengelola sistem.");
+
+  const supabase = await createClient();
+  const { error: updateError } = await supabase
+    .from("jobs")
+    .update({ status })
+    .eq("id", jobId);
+
+  if (updateError) return error("Failed to update job status.");
+
+  revalidatePath("/company/jobs");
+  revalidatePath("/company/jobs/[id]");
+  revalidatePath("/company/dashboard");
+  return { success: true };
 }
 
 // ---------------------------------------------------------------
@@ -142,9 +132,21 @@ export async function updateApplicantStatusAction(applicantId: string, status: s
   if (!user) return error("You must be signed in.");
   if (!isHrdOrAdmin(user)) return error("Only HRD can update applicant status.");
 
-  const result = await storeUpdateApplicantStatus(applicantId, status);
-  if (!result) return error("Applicant not found.");
-  if ("error" in result) return error(result.error);
+  const supabase = await createClient();
+  
+  const { error: updateError } = await supabase
+    .from("applications")
+    .update({ status })
+    .eq("id", applicantId);
+
+  if (updateError) return error("Failed to update applicant status.");
+
+  // Insert history
+  await supabase.from("application_history").insert({
+    application_id: applicantId,
+    status,
+    note: `Status changed to ${status}`,
+  });
 
   revalidatePath("/company/applicants");
   revalidatePath("/company/applicants/[id]");
@@ -171,16 +173,21 @@ export async function scheduleInterviewAction(
   if (!user) return error("You must be signed in.");
   if (!isHrdOrAdmin(user)) return error("Only HRD can schedule interviews.");
 
-  const result = await scheduleInterview(applicantId, {
-    title: input.title,
-    date: input.date,
-    time: input.time || null,
-    location: input.location || null,
-    durationMinutes: input.durationMinutes ? Number(input.durationMinutes) || null : null,
-    notes: input.notes || null,
-  });
-  if (!result) return error("Applicant not found.");
-  if ("error" in result) return error(result.error);
+  const supabase = await createClient();
+  
+  const { error: insertError } = await supabase
+    .from("interviews")
+    .insert({
+      application_id: applicantId,
+      title: input.title.trim(),
+      scheduled_date: input.date,
+      scheduled_time: input.time || null,
+      location: input.location || null,
+      duration_minutes: input.durationMinutes ? Number(input.durationMinutes) || null : null,
+      notes: input.notes || null,
+    });
+
+  if (insertError) return error("Failed to schedule interview: " + insertError.message);
 
   revalidatePath("/company/applicants");
   revalidatePath("/company/applicants/[id]");
@@ -208,18 +215,35 @@ export async function assignTestAction(
   if (!user) return error("You must be signed in.");
   if (!isHrdOrAdmin(user)) return error("Only HRD can send qualification tests.");
 
+  const supabase = await createClient();
+  
+  // Get the application to find the job_id and candidate_id
+  const { data: application } = await supabase
+    .from("applications")
+    .select("job_id, user_id")
+    .eq("id", applicantId)
+    .single();
+
+  if (!application) return error("Application not found.");
+
   const kind = input.kind === "challenge" ? "challenge" : "quiz";
-  const result = await assignTest(applicantId, {
-    kind,
-    title: input.title || undefined,
-    description: kind === "challenge" ? input.description || undefined : undefined,
-    instructions: kind === "challenge" ? input.instructions || undefined : undefined,
-    deadline: kind === "challenge" ? input.deadline || undefined : undefined,
-    minScore: input.minScore ? Number(input.minScore) || undefined : undefined,
-    timeLimitMinutes: input.timeLimitMinutes ? Number(input.timeLimitMinutes) || undefined : undefined,
-  });
-  if (!result) return error("Applicant not found.");
-  if ("error" in result) return error(result.error);
+  const { error: insertError } = await supabase
+    .from("test_assignments")
+    .insert({
+      job_id: application.job_id,
+      candidate_id: application.user_id,
+      application_id: applicantId,
+      kind,
+      title: input.title || "Qualification Test",
+      description: kind === "challenge" ? input.description || null : null,
+      instructions: kind === "challenge" ? input.instructions || null : null,
+      deadline: input.deadline ? new Date(input.deadline).toISOString() : null,
+      min_score: input.minScore ? Number(input.minScore) || 0 : 0,
+      time_limit_minutes: input.timeLimitMinutes ? Number(input.timeLimitMinutes) || null : null,
+      status: "pending",
+    });
+
+  if (insertError) return error("Failed to assign test: " + insertError.message);
 
   revalidatePath("/company/applicants");
   revalidatePath("/company/applicants/[id]");
@@ -240,13 +264,19 @@ export async function reviewTestAction(
   if (!user) return error("You must be signed in.");
   if (!isHrdOrAdmin(user)) return error("Only HRD can review technical challenges.");
 
-  const result = await reviewTest(assignmentId, {
-    score: Number(input.score) || 0,
-    feedback: input.feedback || undefined,
-    decision: input.decision,
-  });
-  if (!result) return error("Assessment not found.");
-  if ("error" in result) return error(result.error);
+  const supabase = await createClient();
+  
+  const { error: updateError } = await supabase
+    .from("test_assignments")
+    .update({
+      score: Number(input.score) || 0,
+      feedback: input.feedback || null,
+      passed: input.decision === "pass",
+      status: "reviewed",
+    })
+    .eq("id", assignmentId);
+
+  if (updateError) return error("Failed to review test: " + updateError.message);
 
   revalidatePath("/company/applicants");
   revalidatePath("/company/applicants/[id]");
@@ -268,7 +298,7 @@ export interface TaskFormValues {
   description: string;
   projectId: string;
   assigneeId: string;
-  priority: Task["priority"];
+  priority: string;
   startDate: string;
   deadline: string;
 }
@@ -281,23 +311,33 @@ export async function createTaskAction(values: TaskFormValues): Promise<ActionRe
   const title = values.title.trim();
   if (!title) return error("Task title is required.");
 
-  const projectId = values.projectId || null;
-  const project = projectId ? getProjectById(projectId) : null;
-  const assigneeId = values.assigneeId || null;
-  const assigneeName = assigneeId || "";
+  const supabase = await createClient();
 
-  await createTask(user.id, {
-    title,
-    description: values.description.trim() || null,
-    projectId,
-    projectName: project?.name ?? null,
-    assigneeId,
-    assigneeName,
-    priority: values.priority || "medium",
-    startDate: values.startDate ? new Date(values.startDate).toISOString().slice(0, 10) : null,
-    deadline: values.deadline ? new Date(values.deadline).toISOString().slice(0, 10) : null,
-    status: "todo",
-  });
+  // Get company
+  const { data: company } = await supabase
+    .from("companies")
+    .select("id")
+    .eq("created_by", user.id)
+    .single();
+
+  if (!company) return error("Company not found.");
+
+  const { error: insertError } = await supabase
+    .from("tasks")
+    .insert({
+      company_id: company.id,
+      created_by: user.id,
+      title,
+      description: values.description.trim() || null,
+      project_id: values.projectId || null,
+      assignee_id: values.assigneeId || null,
+      priority: values.priority || "medium",
+      start_date: values.startDate ? new Date(values.startDate).toISOString().slice(0, 10) : null,
+      deadline: values.deadline ? new Date(values.deadline).toISOString().slice(0, 10) : null,
+      status: "todo",
+    });
+
+  if (insertError) return error("Failed to create task: " + insertError.message);
 
   revalidatePath("/company/tasks");
   revalidatePath("/company/projects");
@@ -305,34 +345,18 @@ export async function createTaskAction(values: TaskFormValues): Promise<ActionRe
   return { success: true };
 }
 
-export async function updateTaskStatusAction(taskId: string, status: Task["status"]): Promise<ActionResult> {
+export async function updateTaskStatusAction(taskId: string, status: string): Promise<ActionResult> {
   const user = await getSessionUser();
   if (!user) return error("You must be signed in.");
-  const task = getTaskById(taskId);
-  if (!task) return error("Task not found.");
 
-  const isOwner = task.createdBy === user.id && isHrdOrAdmin(user);
-  const isAssignee = task.assigneeId && task.assigneeId === user.id && !isHrdOrAdmin(user);
+  const supabase = await createClient();
+  
+  const { error: updateError } = await supabase
+    .from("tasks")
+    .update({ status })
+    .eq("id", taskId);
 
-  if (!isOwner && !isAssignee) return error("You do not have permission to update this task.");
-
-  // Employees may only start or submit their own tasks.
-  if (!isOwner && status !== "in_progress" && status !== "in_review") {
-    return error("You can only start a task or submit it for review.");
-  }
-
-  const result = await storeUpdateTaskStatus(taskId, status);
-  if (!result) return error("Task not found.");
-  if ("error" in result) return error(result.error);
-
-  if (task.assigneeId) {
-    const recipient = isOwner ? task.assigneeId : task.createdBy;
-    notify(
-      recipient,
-      "task",
-      `Task "${task.title}" was moved to ${status}.`
-    );
-  }
+  if (updateError) return error("Failed to update task status.");
 
   revalidatePath("/company/tasks");
   revalidatePath("/company/projects");
@@ -347,7 +371,7 @@ export async function updateTaskStatusAction(taskId: string, status: Task["statu
 export interface ProjectFormValues {
   name: string;
   description: string;
-  status: Project["status"];
+  status: string;
   startDate: string;
   deadline: string;
 }
@@ -360,29 +384,47 @@ export async function createProjectAction(values: ProjectFormValues): Promise<Ac
   const name = values.name.trim();
   if (!name) return error("Project name is required.");
 
-  await createProject(user.id, {
-    name,
-    description: values.description.trim() || null,
-    status: values.status || "planning",
-    startDate: values.startDate ? new Date(values.startDate).toISOString().slice(0, 10) : null,
-    deadline: values.deadline ? new Date(values.deadline).toISOString().slice(0, 10) : null,
-    memberIds: [],
-    memberNames: [],
-  });
+  const supabase = await createClient();
+
+  const { data: company } = await supabase
+    .from("companies")
+    .select("id")
+    .eq("created_by", user.id)
+    .single();
+
+  if (!company) return error("Company not found.");
+
+  const { error: insertError } = await supabase
+    .from("projects")
+    .insert({
+      company_id: company.id,
+      created_by: user.id,
+      name,
+      description: values.description.trim() || null,
+      status: values.status || "planning",
+      start_date: values.startDate ? new Date(values.startDate).toISOString().slice(0, 10) : null,
+      deadline: values.deadline ? new Date(values.deadline).toISOString().slice(0, 10) : null,
+    });
+
+  if (insertError) return error("Failed to create project: " + insertError.message);
 
   revalidatePath("/company/projects");
   revalidatePath("/company/dashboard");
   return { success: true };
 }
 
-export async function updateProjectStatusAction(projectId: string, status: Project["status"]): Promise<ActionResult> {
+export async function updateProjectStatusAction(projectId: string, status: string): Promise<ActionResult> {
   const user = await getSessionUser();
   if (!user) return error("You must be signed in.");
   if (!isHrdOrAdmin(user)) return error("Only HRD can update projects.");
 
-  const project = getProjectById(projectId);
-  if (!project) return error("Project not found.");
-  project.status = status;
+  const supabase = await createClient();
+  const { error: updateError } = await supabase
+    .from("projects")
+    .update({ status })
+    .eq("id", projectId);
+
+  if (updateError) return error("Failed to update project status.");
 
   revalidatePath("/company/projects");
   revalidatePath("/company/projects/[id]");
@@ -399,30 +441,18 @@ export async function sendMessageAction(conversationId: string, text: string): P
   const clean = text.trim();
   if (!clean) return error("Message cannot be empty.");
 
-  const name =
-    (typeof user.user_metadata?.full_name === "string" && user.user_metadata.full_name) ||
-    user.email?.split("@")[0] ||
-    "User";
+  const supabase = await createClient();
+  
+  const { error: insertError } = await supabase
+    .from("messages")
+    .insert({
+      conversation_id: conversationId,
+      sender_id: user.id,
+      text: clean,
+    });
 
-  let conversation = getConversationById(conversationId);
-  if (!conversation && isHrdOrAdmin(user)) {
-    conversation = getOrCreateGeneralConversation(user.id);
-  }
-  if (!conversation) return error("Conversation not found.");
+  if (insertError) return error("Failed to send message: " + insertError.message);
 
-  const isHrd = isHrdOrAdmin(user);
-
-  // Employees (non-HRD) may only post in their own 1:1 thread or a channel
-  // they can see as a hired team member.
-  if (!isHrd) {
-    const isMember = conversation.memberId === user.id;
-    const isChannelMember = conversation.channel && !!getEmployeeForUser(user.id);
-    if (!isMember && !isChannelMember) {
-      return error("You do not have access to this conversation.");
-    }
-  }
-
-  sendMessage(conversation.id, user.id, name, clean);
   revalidatePath("/company/messages");
   revalidatePath("/dashboard/workspace/messages");
   return { success: true };
@@ -449,13 +479,41 @@ export async function createEventAction(values: EventFormValues): Promise<Action
   if (!title) return error("Event title is required.");
   if (!values.date) return error("Event date is required.");
 
-  createEvent(user.id, {
-    title,
-    date: new Date(values.date).toISOString().slice(0, 10),
-    time: values.time.trim() || null,
-    participants: values.participants.map((p) => p.trim()).filter(Boolean),
-    type: values.type || "event",
-  });
+  const supabase = await createClient();
+  
+  const { data: company } = await supabase
+    .from("companies")
+    .select("id")
+    .eq("created_by", user.id)
+    .single();
+
+  if (!company) return error("Company not found.");
+
+  const { data: event, error: insertError } = await supabase
+    .from("calendar_events")
+    .insert({
+      company_id: company.id,
+      created_by: user.id,
+      title,
+      event_date: new Date(values.date).toISOString().slice(0, 10),
+      event_time: values.time.trim() || null,
+      type: values.type || "event",
+    })
+    .select("id")
+    .single();
+
+  if (insertError) return error("Failed to create event: " + insertError.message);
+
+  // Add participants
+  const participants = values.participants.map((p) => p.trim()).filter(Boolean);
+  if (participants.length > 0 && event) {
+    for (const pid of participants) {
+      await supabase.from("calendar_event_participants").insert({
+        event_id: event.id,
+        user_id: pid,
+      });
+    }
+  }
 
   revalidatePath("/company/calendar");
   revalidatePath("/company/dashboard");
@@ -484,12 +542,28 @@ export async function createAnnouncementAction({
   if (!title.trim()) return error("Announcement title is required.");
   if (!message.trim()) return error("Announcement message is required.");
 
-  createAnnouncement(user.id, {
-    title: title.trim(),
-    message: message.trim(),
-    audience: audience.trim() || "All Employees",
-    publishDate: publishDate ? new Date(publishDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
-  });
+  const supabase = await createClient();
+  
+  const { data: company } = await supabase
+    .from("companies")
+    .select("id")
+    .eq("created_by", user.id)
+    .single();
+
+  if (!company) return error("Company not found.");
+
+  const { error: insertError } = await supabase
+    .from("announcements")
+    .insert({
+      company_id: company.id,
+      created_by: user.id,
+      title: title.trim(),
+      message: message.trim(),
+      audience: audience.trim() || "All Employees",
+      publish_date: publishDate ? new Date(publishDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+    });
+
+  if (insertError) return error("Failed to create announcement: " + insertError.message);
 
   revalidatePath("/company/announcements");
   revalidatePath("/company/dashboard");
@@ -497,7 +571,7 @@ export async function createAnnouncementAction({
 }
 
 // ---------------------------------------------------------------
-// Company profile (persisted to HRD's own auth metadata)
+// Company profile (persisted to public.companies)
 // ---------------------------------------------------------------
 
 export interface CompanyProfileValues {

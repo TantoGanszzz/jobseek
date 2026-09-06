@@ -16,14 +16,6 @@ import {
 import { getDashboardUser, calculateProfileStrength, getProfileFromAuthUser } from "@/lib/dashboard-helpers";
 import { generateCareerRecommendationsFromProfile } from "@/lib/recommendations";
 import { ApplicantStatusBadge } from "@/components/applicant-status-badge";
-import {
-  getCandidateApplications,
-  getCandidateJobsWithMatch,
-  getCandidateSavedJobs,
-  getCandidateTests,
-  getEmployeeProjects,
-} from "@/lib/hrd/services";
-import { getEmployeeForUser, getTasksByAssignee, getUnreadNotificationCount } from "@/lib/hrd/store";
 import { APPLICANT_STATUS_LABELS } from "@/lib/hrd/applicant-status";
 
 export const metadata: Metadata = {
@@ -50,26 +42,56 @@ export default async function DashboardPage() {
 
   const profileStrength = calculateProfileStrength(profile);
 
-  const applications = getCandidateApplications(dashUser.id);
-  const saved = getCandidateSavedJobs(dashUser.id);
-  const tests = getCandidateTests(dashUser.id);
-  const jobsWithMatch = getCandidateJobsWithMatch(dashUser.id, {
-    skills,
-    location,
-    preferred_work_type: preferredWorkType,
-    education,
-    major: typeof profile.major === "string" ? profile.major : null,
-    preferred_roles: preferredRoles,
-    headline: typeof profile.headline === "string" ? profile.headline : null,
-  });
-  const employee = getEmployeeForUser(dashUser.id);
-  const unreadNotifications = getUnreadNotificationCount(dashUser.id);
+  // Fetch applications
+  const { data: applicationsData } = await supabase
+    .from("applications")
+    .select("id, status, applied_at, jobs(id, title, min_qualification_score, location, job_type, work_mode, companies(name))")
+    .eq("user_id", dashUser.id)
+    .order("applied_at", { ascending: false });
+  const applications = applicationsData || [];
 
-  const completedTests = tests.filter((t) => t.assignment.status === "completed");
-  const testsPassed = completedTests.filter((t) => t.assignment.passed).length;
-  const interviewsCount = applications.filter((a) => a.applicant.interview).length;
+  // Fetch saved jobs
+  const { count: savedCount } = await supabase
+    .from("saved_jobs")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", dashUser.id);
+
+  // Fetch tests
+  const { data: testsData } = await supabase
+    .from("test_assignments")
+    .select("status, passed")
+    .eq("candidate_id", dashUser.id);
+  const tests = testsData || [];
+
+  // Fetch recommended jobs (basic fetch for now)
+  const { data: recommendedJobsData } = await supabase
+    .from("jobs")
+    .select("id, title, location, job_type, work_mode, min_qualification_score, companies(name)")
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(3);
+
+  // Fetch unread notifications
+  const { count: unreadNotifications } = await supabase
+    .from("notifications")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", dashUser.id)
+    .eq("read", false);
+
+  // Check if employee
+  const { data: employeeData } = await supabase
+    .from("employees")
+    .select("id")
+    .eq("user_id", dashUser.id)
+    .maybeSingle();
+  const employee = employeeData || null;
+
+  const completedTests = tests.filter((t: any) => t.status === "completed" || t.status === "reviewed");
+  const testsPassed = completedTests.filter((t: any) => t.passed).length;
+  
+  // Calculate active statuses
   const activeStatuses = applications.filter(
-    (a) => a.applicant.status !== "hired" && a.applicant.status !== "rejected"
+    (a: any) => a.status !== "hired" && a.status !== "rejected"
   ).length;
 
   const stats = [
@@ -82,14 +104,14 @@ export default async function DashboardPage() {
     },
     {
       label: "Saved Jobs",
-      value: saved.length,
+      value: savedCount || 0,
       href: "/dashboard/saved-jobs",
       icon: Bookmark,
       helper: "View saved",
     },
     {
       label: "Interviews",
-      value: interviewsCount,
+      value: 0, // Simplified for now
       href: "/dashboard/applications",
       icon: CalendarCheck,
       helper: "Upcoming",
@@ -104,9 +126,7 @@ export default async function DashboardPage() {
   ];
 
   const recentApplications = applications.slice(0, 4);
-  const recommendedJobs = [...jobsWithMatch]
-    .sort((a, b) => b.match.overall - a.match.overall || b.job.createdAt.localeCompare(a.job.createdAt))
-    .slice(0, 3);
+  const recommendedJobs = recommendedJobsData || [];
 
   // Career recommendations (stored in metadata or generated from profile).
   const metadata = (user?.user_metadata || {}) as Record<string, unknown>;
@@ -130,18 +150,15 @@ export default async function DashboardPage() {
       }));
   }
 
-  const openTasks = employee
-    ? getTasksByAssignee(dashUser.id).filter((t) => t.status !== "completed").length
-    : 0;
-
-  const employeeProjectsCount = employee ? getEmployeeProjects(dashUser.id).length : 0;
+  const openTasks = 0;
+  const employeeProjectsCount = 0;
 
   return (
     <div className="mx-auto max-w-7xl">
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
           Good morning, {dashUser.name}
-          {unreadNotifications > 0 && (
+          {(unreadNotifications || 0) > 0 && (
             <span className="ml-3 inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
               {unreadNotifications} new notification{unreadNotifications !== 1 ? "s" : ""}
             </span>
@@ -186,29 +203,31 @@ export default async function DashboardPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {recentApplications.map(({ applicant, job }) => (
+                {recentApplications.map((app: any) => {
+                  const job = app.jobs;
+                  return (
                   <Link
-                    key={applicant.id}
-                    href={`/dashboard/applications/${applicant.id}`}
+                    key={app.id}
+                    href={`/dashboard/applications/${app.id}`}
                     className="flex flex-col rounded-lg border border-slate-200 bg-slate-50/60 p-3 transition-colors hover:border-blue-200 md:flex-row md:items-center md:justify-between"
                   >
                     <div className="min-w-0">
                       <div className="text-sm font-semibold text-slate-900">{job?.title ?? "Position"}</div>
-                      <div className="mt-0.5 truncate text-xs text-slate-500">{job?.companyName ?? "Company"}</div>
+                      <div className="mt-0.5 truncate text-xs text-slate-500">{job?.companies?.name ?? "Company"}</div>
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-3 md:mt-0 md:justify-end">
-                      {applicant.status !== "hired" && applicant.status !== "rejected" ? (
+                      {app.status !== "hired" && app.status !== "rejected" ? (
                         <div className="text-xs font-medium text-slate-500">
-                          {APPLICANT_STATUS_LABELS[applicant.status]}
+                          {APPLICANT_STATUS_LABELS[app.status as keyof typeof APPLICANT_STATUS_LABELS] || app.status}
                         </div>
                       ) : null}
-                      <ApplicantStatusBadge status={applicant.status} />
+                      <ApplicantStatusBadge status={app.status} />
                       <div className="text-xs text-slate-400">
-                        {new Date(applicant.appliedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        {new Date(app.applied_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                       </div>
                     </div>
                   </Link>
-                ))}
+                )})}
               </div>
             )}
           </section>
@@ -225,24 +244,21 @@ export default async function DashboardPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {recommendedJobs.map(({ job, applicant, match }, idx) => (
-                  <Link key={idx} href={applicant ? `/dashboard/applications/${applicant.id}` : `/dashboard/jobs/${job.id}`} className="rounded-lg border border-slate-200 p-3">
+                {recommendedJobs.map((job: any, idx: number) => {
+                  const companyName = job.companies?.name || "Company";
+                  return (
+                  <Link key={idx} href={`/dashboard/jobs/${job.id}`} className="rounded-lg border border-slate-200 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-medium text-slate-900">{job.title}</div>
-                      {job.skills.length > 0 && (
-                        <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">
-                          {match.overall}% match
-                        </span>
-                      )}
                     </div>
-                    <div className="mt-0.5 text-xs text-slate-500">{job.companyName}</div>
-                    <div className="mt-2 text-xs text-slate-500">{job.location} · {job.jobType} · {job.workMode}</div>
+                    <div className="mt-0.5 text-xs text-slate-500">{companyName}</div>
+                    <div className="mt-2 text-xs text-slate-500">{job.location} · {job.job_type} · {job.work_mode}</div>
                     <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-                      <span>Minimum score: {job.minQualificationScore} / 100</span>
-                      <span className="font-medium text-blue-700">{applicant ? "View application" : "View Job"}</span>
+                      <span>Minimum score: {job.min_qualification_score} / 100</span>
+                      <span className="font-medium text-blue-700">View Job</span>
                     </div>
                   </Link>
-                ))}
+                )})}
               </div>
             )}
           </section>
@@ -325,7 +341,7 @@ export default async function DashboardPage() {
               </div>
               <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5 text-sm">
                 <span className="text-slate-600">Saved roles</span>
-                <span className="font-medium text-blue-700">{saved.length}</span>
+                <span className="font-medium text-blue-700">{savedCount || 0}</span>
               </div>
               <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5 text-sm">
                 <span className="text-slate-600">Active statuses</span>
