@@ -10,7 +10,23 @@ export default async function CompanyProfilePage() {
   } = await supabase.auth.getUser();
   const dashUser = await getDashboardUser();
 
-  const profile = null;
+  const { data: company } = await supabase
+    .from("companies")
+    .select("name, industry, company_size, location, website, description")
+    .eq("created_by", dashUser.id)
+    .single();
+
+  const profile = company
+    ? {
+        name: company.name || "",
+        industry: company.industry || "",
+        companySize: company.company_size || "",
+        location: company.location || "",
+        website: company.website || "",
+        description: company.description || "",
+        updatedAt: company.updated_at || new Date().toISOString(),
+      }
+    : null;
 
   return (
     <div className="mx-auto max-w-4xl">

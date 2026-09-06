@@ -28,8 +28,8 @@ export default async function FindJobsPage() {
     user ? supabase.from("applications").select("id,job_id,status,applied_at").eq("user_id", user.id) : Promise.resolve({ data: [] }),
     user ? supabase.from("saved_jobs").select("job_id").eq("user_id", user.id) : Promise.resolve({ data: [] }),
   ]);
-  const applicationByJob = new Map((applications ?? []).map((application) => [application.job_id, application]));
-  const jobs = (rows ?? []).map((row) => {
+  const applicationByJob = new Map((applications ?? []).map((application: any) => [application.job_id, application]));
+  const jobs = (rows ?? []).map((row: any) => {
     const job = {
       id: row.id, createdBy: "", companyName: row.companies?.name ?? "Company", title: row.title,
       description: row.description, department: null, location: row.location ?? "", jobType: row.job_type ?? "",
@@ -39,10 +39,10 @@ export default async function FindJobsPage() {
       deadline: null, status: row.status === "active" ? "active" : "closed", createdAt: row.created_at,
     };
     const snapshot = calculateJobMatch({ candidateSkills: skills, candidateLocation: location, preferredWorkModes: preferredWorkType, preferredRoles, candidateEducation: education, jobSkills: job.skills, jobLocation: job.location, jobWorkMode: null, jobTitle: job.title, jobEducation: null });
-    const application = applicationByJob.get(row.id);
+    const application: any = applicationByJob.get(row.id);
     return { job, applicant: application ? { id: application.id, status: application.status, userId, jobId: application.job_id } : null, match: { overall: snapshot.overall, skillScore: snapshot.skill, locationScore: snapshot.location, workModeScore: snapshot.workMode, careerScore: snapshot.career, weights: { skill: 50, location: 25, workMode: 15, career: 10 }, matchedSkills: snapshot.matchedSkills, missingSkills: snapshot.missingSkills, reasons: [] } };
   });
-  const savedJobIds = (savedRows ?? []).map((saved) => saved.job_id);
+  const savedJobIds = (savedRows ?? []).map((saved: any) => saved.job_id);
 
   const profileComplete = skills.length > 0 && !!location;
 

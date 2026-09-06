@@ -36,7 +36,7 @@ export default async function ApplicationsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {(applications ?? []).map((application) => {
+          {(applications ?? []).map((application: any) => {
             const job = application.jobs;
             return (
             <Link

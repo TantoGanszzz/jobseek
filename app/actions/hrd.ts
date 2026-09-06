@@ -70,7 +70,6 @@ export interface JobFormValues {
 export async function createJobAction(values: JobFormValues): Promise<ActionResult> {
   const user = await getSessionUser();
   if (!user) {
-    logDevelopmentSupabase("Create Job authentication", { userPresent: false, table: "auth.users", operation: "getUser", success: false });
     return error("You must be signed in.");
   }
 
@@ -82,10 +81,48 @@ export async function createJobAction(values: JobFormValues): Promise<ActionResu
   if (!title) return error("Job title is required.");
   if (!values.location.trim()) return error("Location is required.");
 
-  // The configured Supabase project does not expose the local project's
-  // assumed `public.jobs` / `public.companies` schema. Do not guess at an
-  // HRD table or create a disconnected record.
-  return error("Struktur data HRD/perusahaan belum tersedia di Supabase yang terhubung. Hubungi pengelola sistem.");
+  const { data: company } = await supabase
+    .from("companies")
+    .select("id")
+    .eq("created_by", user.id)
+    .single();
+
+  if (!company) {
+    return error("Struktur data HRD/perusahaan belum tersedia. Silakan lengkapi profil perusahaan terlebih dahulu.");
+  }
+
+  const { data: job, error: insertError } = await supabase
+    .from("jobs")
+    .insert({
+      company_id: company.id,
+      title: title,
+      description: values.description.trim() || null,
+      department: values.department.trim() || null,
+      location: values.location.trim(),
+      job_type: values.jobType.trim() || null,
+      work_mode: values.workMode.trim() || null,
+      salary_range: values.salaryRange.trim() || null,
+      experience_level: values.experienceLevel.trim() || null,
+      education: values.education.trim() || null,
+      skills: values.skills || [],
+      preferred_skills: values.preferredSkills || [],
+      requirements: values.requirements.trim() || null,
+      responsibilities: values.responsibilities.trim() || null,
+      stages: values.stages || [],
+      min_qualification_score: values.minQualificationScore || 0,
+      deadline: values.deadline ? new Date(values.deadline).toISOString() : null,
+      status: "active",
+    })
+    .select("id")
+    .single();
+
+  if (insertError) {
+    return error("Gagal membuat lowongan: " + insertError.message);
+  }
+
+  revalidatePath("/company/jobs");
+  revalidatePath("/company/dashboard");
+  return { success: true, jobId: job.id };
 }
 
 export async function updateJobStatusAction(jobId: string, status: JobPosting["status"]): Promise<ActionResult> {
@@ -480,23 +517,48 @@ export async function saveCompanyProfileAction(values: CompanyProfileValues): Pr
   if (!values.name.trim()) return error("Company name is required.");
 
   const supabase = await createClient();
-  const { error: updateError } = await supabase.auth.updateUser({
-    data: {
-      company_profile: {
-        name: values.name.trim(),
-        industry: values.industry.trim(),
-        companySize: values.companySize.trim(),
-        location: values.location.trim(),
-        website: values.website.trim(),
-        description: values.description.trim(),
-        updatedAt: new Date().toISOString(),
-      },
-    },
-  });
+  
+  // See if company exists for this user
+  const { data: existing } = await supabase
+    .from("companies")
+    .select("id")
+    .eq("created_by", user.id)
+    .maybeSingle();
 
-  if (updateError) return error("Could not save company profile. Please try again.");
+  if (existing) {
+    const { error: updateError } = await supabase
+      .from("companies")
+      .update({
+        name: values.name.trim(),
+        industry: values.industry.trim() || null,
+        company_size: values.companySize.trim() || null,
+        location: values.location.trim() || null,
+        website: values.website.trim() || null,
+        description: values.description.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id);
+    if (updateError) return error("Could not save company profile. Please try again.");
+  } else {
+    const { error: insertError } = await supabase
+      .from("companies")
+      .insert({
+        created_by: user.id,
+        name: values.name.trim(),
+        industry: values.industry.trim() || null,
+        company_size: values.companySize.trim() || null,
+        location: values.location.trim() || null,
+        website: values.website.trim() || null,
+        description: values.description.trim() || null,
+      });
+    if (insertError) return error("Could not create company profile. Please try again.");
+  }
+
+  // Set onboarding_completed if not already
+  await supabase.from("profiles").update({ onboarding_completed: true }).eq("id", user.id);
 
   revalidatePath("/company/profile");
   revalidatePath("/company/dashboard");
+  revalidatePath("/onboarding/hrd");
   return { success: true };
 }

@@ -30,36 +30,30 @@ export default async function HrdOnboardingPage() {
       onboarding_step: profile?.onboarding_step || 1,
     };
 
-    if (profile?.company_id) {
-      const { data: company } = await supabase
-        .from("companies")
-        .select("name, logo_url, industry, company_size, company_type, location, city, province, website, description")
-        .eq("id", profile.company_id)
-        .single();
+    const { data: company } = await supabase
+      .from("companies")
+      .select("id, name, logo_url, industry, company_size, location, website, description")
+      .eq("created_by", status.user_id)
+      .maybeSingle();
 
+    if (company) {
+      initial = {
+        ...base,
+        name: company.name || "",
+        logo_url: company.logo_url || "",
+        industry: company.industry ? String(company.industry).split(",").map((s) => s.trim()).filter(Boolean) : [],
+        company_size: company.company_size || "",
+        location: company.location || "",
+        website: company.website || "",
+        description: company.description || "",
+      };
+      
       const { data: prefs } = await supabase
         .from("company_preferences")
         .select("preferred_roles, hiring_types, work_modes, candidate_experience, preferred_skills")
-        .eq("company_id", profile.company_id)
+        .eq("company_id", company.id)
         .maybeSingle();
-
-      initial = {
-        ...base,
-        ...(company
-          ? {
-              name: company.name || "",
-              logo_url: company.logo_url || "",
-              industry: company.industry ? String(company.industry).split(",").map((s) => s.trim()).filter(Boolean) : [],
-              company_size: company.company_size || "",
-              company_type: company.company_type || "",
-              location: company.location || "",
-              city: company.city || "",
-              province: company.province || "",
-              website: company.website || "",
-              description: company.description || "",
-            }
-          : {}),
-      };
+        
       initialPrefs = prefs
         ? {
             preferred_roles: prefs.preferred_roles || [],
@@ -72,6 +66,7 @@ export default async function HrdOnboardingPage() {
     } else {
       initial = { ...base };
     }
+
   } catch {}
 
   return <HrdOnboarding initial={initial} initialPrefs={initialPrefs} />;

@@ -77,7 +77,7 @@ export default async function ApplicationDetailPage({
 
   const { applicant, job, testAssignment } = detail;
   // Recruitment chat is not supported by the current schema contract.
-  const thread = null;
+  const thread: any = null;
   const isFinal = applicant.status === "hired" || applicant.status === "rejected";
   const isInterviewScheduled = !!applicant.interview;
   const isTestAssigned = !!testAssignment;
