@@ -14,6 +14,7 @@ interface NavbarProps {
     full_name: string | null;
     avatar_url: string | null;
   } | null;
+  variant?: "global" | "dashboard";
 }
 
 const navLinks = [
@@ -22,7 +23,7 @@ const navLinks = [
   { href: "#about", label: "Resources" },
 ];
 
-export default function Navbar({ user }: NavbarProps) {
+export default function Navbar({ user, variant = "global" }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 

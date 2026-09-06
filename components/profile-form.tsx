@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import LocationAutocompleteInput from "@/components/location-autocomplete-input";
 import { updateProfile, changePassword } from "@/app/actions/profile";
 import type { Profile } from "@/types/database.types";
 import { Save, Lock, X, Plus } from "lucide-react";
@@ -13,6 +15,20 @@ interface ProfileFormProps {
 }
 
 export default function ProfileForm({ profile, email }: ProfileFormProps) {
+  const router = useRouter();
+  const [profileFields, setProfileFields] = useState({
+    full_name: profile?.full_name ?? "",
+    headline: profile?.headline ?? "",
+    phone: profile?.phone ?? "",
+    location: profile?.location ?? "",
+    bio: profile?.bio ?? "",
+    education: profile?.education ?? "",
+    university: profile?.university ?? "",
+    major: profile?.major ?? "",
+    github_url: profile?.github_url ?? "",
+    linkedin_url: profile?.linkedin_url ?? "",
+    portfolio_url: profile?.portfolio_url ?? "",
+  });
   const [skills, setSkills] = useState<string[]>(profile?.skills || []);
   const [skillInput, setSkillInput] = useState("");
   const [message, setMessage] = useState<{
@@ -25,6 +41,10 @@ export default function ProfileForm({ profile, email }: ProfileFormProps) {
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const [pwLoading, setPwLoading] = useState(false);
+
+  function setField(field: keyof typeof profileFields, value: string) {
+    setProfileFields((prev) => ({ ...prev, [field]: value }));
+  }
 
   function addSkill() {
     const trimmed = skillInput.trim();
@@ -39,18 +59,25 @@ export default function ProfileForm({ profile, email }: ProfileFormProps) {
   }
 
   async function handleProfileSubmit(formData: FormData) {
+    if (loading) return;
     setLoading(true);
     setMessage(null);
 
     // Add skills to form data
     formData.set("skills", JSON.stringify(skills));
+    formData.set("location", profileFields.location);
 
     try {
       const result = await updateProfile(formData);
       if (result?.error) {
         setMessage({ type: "error", text: result.error });
       } else {
-        setMessage({ type: "success", text: "Profil berhasil diperbarui!" });
+        setMessage({ type: "success", text: "Profile updated successfully." });
+        router.refresh();
+        // Show the saved state briefly, then land on the updated career matches.
+        window.setTimeout(() => {
+          router.push("/dashboard/career?saved=1");
+        }, 500);
       }
     } catch {
       setMessage({ type: "error", text: "Terjadi kesalahan." });
@@ -122,7 +149,7 @@ export default function ProfileForm({ profile, email }: ProfileFormProps) {
           {/* Avatar placeholder */}
           <div className="flex items-center gap-4">
             <div className="h-16 w-16 rounded-full bg-navy/10 border border-brand-border flex items-center justify-center text-xl font-bold text-navy">
-              {profile?.full_name?.[0]?.toUpperCase() || "U"}
+              {profileFields.full_name[0]?.toUpperCase() || "U"}
             </div>
             <div>
               <p className="text-sm font-medium text-navy">Foto Profil</p>
@@ -143,7 +170,8 @@ export default function ProfileForm({ profile, email }: ProfileFormProps) {
               <Input
                 id="full_name"
                 name="full_name"
-                defaultValue={profile?.full_name || ""}
+                value={profileFields.full_name}
+                onChange={(e) => setField("full_name", e.target.value)}
                 placeholder="Nama lengkap"
                 className="h-11 border-brand-border"
               />
@@ -174,7 +202,8 @@ export default function ProfileForm({ profile, email }: ProfileFormProps) {
             <Input
               id="headline"
               name="headline"
-              defaultValue={profile?.headline || ""}
+              value={profileFields.headline}
+              onChange={(e) => setField("headline", e.target.value)}
               placeholder="Frontend Developer | UI/UX Enthusiast"
               className="h-11 border-brand-border"
             />
@@ -191,7 +220,8 @@ export default function ProfileForm({ profile, email }: ProfileFormProps) {
               <Input
                 id="phone"
                 name="phone"
-                defaultValue={profile?.phone || ""}
+                value={profileFields.phone}
+                onChange={(e) => setField("phone", e.target.value)}
                 placeholder="+62..."
                 className="h-11 border-brand-border"
               />
@@ -203,12 +233,14 @@ export default function ProfileForm({ profile, email }: ProfileFormProps) {
               >
                 Lokasi
               </label>
-              <Input
+              <LocationAutocompleteInput
                 id="location"
                 name="location"
-                defaultValue={profile?.location || ""}
+                value={profileFields.location}
+                onValueChange={(v) => setField("location", v)}
                 placeholder="Jakarta, Indonesia"
                 className="h-11 border-brand-border"
+                wrapperClassName="space-y-0"
               />
             </div>
           </div>
@@ -224,10 +256,98 @@ export default function ProfileForm({ profile, email }: ProfileFormProps) {
               id="bio"
               name="bio"
               rows={4}
-              defaultValue={profile?.bio || ""}
+              value={profileFields.bio}
+              onChange={(e) => setField("bio", e.target.value)}
               placeholder="Ceritakan tentang diri Anda..."
               className="w-full px-3 py-2 text-sm rounded-lg border border-brand-border focus:border-navy focus:outline-none focus:ring-1 focus:ring-navy transition-colors resize-none"
             />
+          </div>
+
+          {/* Education */}
+          <div className="space-y-2">
+            <label htmlFor="education" className="block text-sm font-medium text-navy">
+              Education Level
+            </label>
+            <Input
+              id="education"
+              name="education"
+              value={profileFields.education}
+              onChange={(e) => setField("education", e.target.value)}
+              placeholder="S1 / Sarjana"
+              className="h-11 border-brand-border"
+            />
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-5">
+            <div className="space-y-2">
+              <label htmlFor="university" className="block text-sm font-medium text-navy">
+                School / University
+              </label>
+              <Input
+                id="university"
+                name="university"
+                value={profileFields.university}
+                onChange={(e) => setField("university", e.target.value)}
+                placeholder="Universitas Indonesia"
+                className="h-11 border-brand-border"
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="major" className="block text-sm font-medium text-navy">
+                Major
+              </label>
+              <Input
+                id="major"
+                name="major"
+                value={profileFields.major}
+                onChange={(e) => setField("major", e.target.value)}
+                placeholder="Computer Science"
+                className="h-11 border-brand-border"
+              />
+            </div>
+          </div>
+
+          {/* Links */}
+          <div className="grid sm:grid-cols-3 gap-5">
+            <div className="space-y-2">
+              <label htmlFor="github_url" className="block text-sm font-medium text-navy">
+                GitHub
+              </label>
+              <Input
+                id="github_url"
+                name="github_url"
+                value={profileFields.github_url}
+                onChange={(e) => setField("github_url", e.target.value)}
+                placeholder="https://github.com/..."
+                className="h-11 border-brand-border"
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="linkedin_url" className="block text-sm font-medium text-navy">
+                LinkedIn
+              </label>
+              <Input
+                id="linkedin_url"
+                name="linkedin_url"
+                value={profileFields.linkedin_url}
+                onChange={(e) => setField("linkedin_url", e.target.value)}
+                placeholder="https://linkedin.com/in/..."
+                className="h-11 border-brand-border"
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="portfolio_url" className="block text-sm font-medium text-navy">
+                Portfolio
+              </label>
+              <Input
+                id="portfolio_url"
+                name="portfolio_url"
+                value={profileFields.portfolio_url}
+                onChange={(e) => setField("portfolio_url", e.target.value)}
+                placeholder="https://..."
+                className="h-11 border-brand-border"
+              />
+            </div>
           </div>
 
           {/* Skills */}
@@ -283,7 +403,7 @@ export default function ProfileForm({ profile, email }: ProfileFormProps) {
             className="bg-navy text-white hover:bg-navy-light font-medium h-11 px-6 cursor-pointer"
           >
             <Save className="mr-2 h-4 w-4" />
-            {loading ? "Menyimpan..." : "Save Changes"}
+            {loading ? "Saving..." : "Save Changes"}
           </Button>
         </form>
       </div>

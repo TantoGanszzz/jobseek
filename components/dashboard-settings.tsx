@@ -75,14 +75,14 @@ export default function SettingsClient({ email, createdAt }: SettingsClientProps
     : "-";
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-3xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-navy flex items-center gap-2">
-          <Settings className="h-7 w-7" />
+    <div className="mx-auto max-w-3xl">
+      <div className="mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <Settings className="h-6 w-6" />
           Settings
         </h1>
-        <p className="mt-2 text-muted-foreground">
-          Kelola pengaturan dan keamanan akun Anda.
+        <p className="mt-1 text-sm text-slate-500">
+          Manage your account and security.
         </p>
       </div>
 

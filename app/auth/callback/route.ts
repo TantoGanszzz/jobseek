@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { onboardingRedirectTarget } from "@/lib/onboarding";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -10,7 +11,30 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      let target = next;
+      if (user) {
+        let role = user.user_metadata?.role || "user";
+        let onboardingCompleted = true;
+        try {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("role, onboarding_completed")
+            .eq("id", user.id)
+            .maybeSingle();
+          if (profile) {
+            role = profile.role || role;
+            if (profile.onboarding_completed != null) onboardingCompleted = !!profile.onboarding_completed;
+          }
+        } catch {}
+        const resolved = onboardingRedirectTarget(role, onboardingCompleted);
+        if (resolved) target = resolved;
+      }
+
+      return NextResponse.redirect(`${origin}${target}`);
     }
   }
 

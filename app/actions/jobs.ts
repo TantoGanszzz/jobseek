@@ -12,6 +12,16 @@ export async function applyToJob(jobId: string) {
     return { error: "Not authenticated" };
   }
 
+  const { data: job, error: jobError } = await supabase
+    .from("jobs")
+    .select("id")
+    .eq("id", jobId)
+    .maybeSingle();
+
+  if (jobError || !job) {
+    console.error("Unable to load job before applying", jobError);
+    return { error: "This job is no longer available." };
+  }
   const { error } = await supabase.from("applications").insert({
     user_id: user.id,
     job_id: jobId,
@@ -22,7 +32,8 @@ export async function applyToJob(jobId: string) {
     if (error.code === "23505") {
       return { error: "Anda sudah melamar pekerjaan ini." };
     }
-    return { error: error.message };
+    console.error("Unable to submit application", error);
+    return { error: "Unable to submit your application right now. Please try again." };
   }
 
   return { success: true };

@@ -2,6 +2,30 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { onboardingRedirectTarget } from "@/lib/onboarding";
+
+/** Resolve the post-sign-in destination from role + onboarding state. */
+async function getPostSignInTarget(supabase: any, userId?: string): Promise<string> {
+  let role: string | null = null;
+  let onboardingCompleted = true;
+
+  if (userId) {
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, onboarding_completed")
+        .eq("id", userId)
+        .maybeSingle();
+      if (profile) {
+        role = profile.role || null;
+        if (profile.onboarding_completed != null) onboardingCompleted = !!profile.onboarding_completed;
+      }
+    } catch {}
+  }
+
+  const resolvedRole = role || "user";
+  return onboardingRedirectTarget(resolvedRole, onboardingCompleted) || "/";
+}
 
 /** Map raw Supabase error messages to user-friendly strings. */
 function mapSignInError(message: string): string {
@@ -38,7 +62,7 @@ export async function signIn(formData: FormData) {
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
 
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
@@ -47,22 +71,41 @@ export async function signIn(formData: FormData) {
     return { error: mapSignInError(error.message) };
   }
 
-  redirect("/");
+  redirect(await getPostSignInTarget(supabase, data.user?.id));
 }
 
 export async function signUp(formData: FormData) {
   const supabase = await createClient();
 
-  const fullName = formData.get("full_name") as string;
+  const fullNameValue = formData.get("full_name");
+  const fullName =
+    typeof fullNameValue === "string" && fullNameValue.trim()
+      ? fullNameValue.trim()
+      : null;
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
+  const phone = formData.get("phone") as string;
+  const accountType = formData.get("account_type") as string;
+
+  if (!phone) {
+    return { error: "Nomor telepon wajib diisi." };
+  }
+
+  if (!accountType) {
+    return { error: "Pilih tipe akun terlebih dahulu." };
+  }
+
+  const normalizedRole = accountType === "industry" ? "hrd" : "user";
 
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: {
-        full_name: fullName,
+        ...(fullName ? { full_name: fullName } : {}),
+        phone,
+        account_type: accountType,
+        role: normalizedRole,
       },
     },
   });
@@ -71,18 +114,26 @@ export async function signUp(formData: FormData) {
     return { error: mapSignUpError(error.message) };
   }
 
-  // Create profile entry if user was created
+  // Create profile entry if user was created (idempotent: trigger also creates it)
   if (data.user) {
-    await supabase.from("profiles").insert({
-      id: data.user.id,
-      full_name: fullName,
-    });
+    await supabase.from("profiles").upsert(
+      {
+        id: data.user.id,
+        full_name: fullName,
+        phone,
+        role: normalizedRole,
+        onboarding_completed: false,
+        onboarding_step: 1,
+      },
+      { onConflict: "id" }
+    );
   }
 
   // Branch on whether email confirmation is required
   if (data.session) {
-    // Email confirmation disabled — user is signed in immediately
-    redirect("/");
+    // Email confirmation disabled — user is signed in immediately.
+    // Route new users to onboarding; existing users to their dashboard.
+    redirect(await getPostSignInTarget(supabase, data.user?.id));
   }
 
   // Email confirmation required — session is null, user exists

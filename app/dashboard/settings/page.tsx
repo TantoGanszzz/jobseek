@@ -4,7 +4,7 @@ import SettingsClient from "@/components/dashboard-settings";
 
 export const metadata: Metadata = {
   title: "Settings — Jobseek",
-  description: "Kelola pengaturan akun Anda.",
+  description: "Manage your account settings.",
 };
 
 export default async function SettingsPage() {

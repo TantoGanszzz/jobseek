@@ -1,14 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import DashboardSidebar from "@/components/dashboard-sidebar";
-import MobileSidebar from "@/components/mobile-sidebar";
+import { RoleDashboardShell } from "@/components/role-dashboard-shell";
+import { userNavGroups, employeeWorkspaceNavGroups } from "@/lib/nav-config";
+import type { NavGroup } from "@/components/role-dashboard-shell";
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Auth guard — redirect if not logged in
   const supabase = await createClient();
   const {
     data: { user },
@@ -18,40 +18,46 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  // Fetch profile for sidebar
-  let profile = null;
-  try {
-    const { data } = await supabase
-      .from("profiles")
-      .select("full_name, avatar_url")
-      .eq("id", user.id)
-      .single();
-    profile = data;
-  } catch {
-    // Profile table might not exist yet
+  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const role = typeof metadata.role === "string" ? metadata.role : "user";
+  const onboardingCompleted = metadata.onboarding_completed !== false;
+
+  // Only USER role may access /dashboard
+  if (role === "hrd") {
+    redirect("/company/dashboard");
+  }
+  if (role === "admin") {
+    redirect("/admin");
+  }
+  if (!onboardingCompleted) {
+    redirect("/onboarding/user");
   }
 
-  const sidebarUser = {
-    id: user.id,
-    email: user.email || "",
-    full_name: profile?.full_name || user.user_metadata?.full_name || null,
-    avatar_url: profile?.avatar_url || null,
+  const name = typeof metadata.full_name === "string" ? metadata.full_name : "";
+  const avatarUrl = typeof metadata.avatar_url === "string" ? metadata.avatar_url : null;
+
+  const email = user.email || "";
+  const finalName = name || email.split("@")[0] || "Candidate";
+
+  const dashUser = {
+    name: finalName.charAt(0).toUpperCase() + finalName.slice(1),
+    email,
+    role: "User",
+    avatarUrl,
   };
 
+  // Hired candidates (an Employee record now exists) get an extra Workspace
+  // section with their tasks, projects, messages, calendar, and announcements.
+  const isEmployee = false;
+  const navGroups: NavGroup[] = isEmployee
+    ? [...userNavGroups, ...employeeWorkspaceNavGroups]
+    : userNavGroups;
+
+  const notifications: [] = [];
+
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
-      {/* Desktop Sidebar */}
-      <DashboardSidebar user={sidebarUser} />
-
-      {/* Mobile Sidebar Toggle (fixed position) */}
-      <div className="md:hidden fixed bottom-5 right-5 z-40">
-        <MobileSidebar user={sidebarUser} />
-      </div>
-
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto bg-light-bg">
-        {children}
-      </main>
-    </div>
+    <RoleDashboardShell navGroups={navGroups} user={dashUser} brandLabel="Jobseek" notifications={notifications}>
+      {children}
+    </RoleDashboardShell>
   );
 }

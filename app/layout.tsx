@@ -1,20 +1,9 @@
 import type { Metadata } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import "./globals.css";
-
-const inter = Inter({
-  variable: "--font-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Jobseek — Build Your Career. Find Your Future.",
@@ -51,27 +40,30 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         id: authUser.id,
         email: authUser.email || "",
         full_name: profile?.full_name || authUser.user_metadata?.full_name || null,
-        avatar_url: profile?.avatar_url || null,
+        avatar_url: profile?.avatar_url || authUser.user_metadata?.avatar_url || null,
       };
     }
   } catch {
     // Supabase not configured yet — that's okay, show guest navbar
   }
 
-  // Check if current route is dashboard to hide footer
+  // Hide the public navbar/footer on dashboard and admin routes to allow the role-specific shell to take over.
   const headersList = await headers();
   const pathname = headersList.get("x-next-pathname") || "";
-  const isDashboard = pathname.startsWith("/dashboard");
+  const isDashboardRoute =
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/company") ||
+    pathname.startsWith("/admin");
 
   return (
     <html
       lang="id"
-      className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
+      className="h-full antialiased"
     >
       <body className="min-h-full flex flex-col">
-        <Navbar user={user} />
+        {!isDashboardRoute && <Navbar user={user} />}
         <main className="flex-1">{children}</main>
-        {!isDashboard && <Footer />}
+        {!isDashboardRoute && <Footer />}
       </body>
     </html>
   );

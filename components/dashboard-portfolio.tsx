@@ -9,7 +9,7 @@ import {
   FolderKanban,
   Plus,
   ExternalLink,
-  Github,
+  Globe,
   Pencil,
   Trash2,
   X,
@@ -115,7 +115,7 @@ export default function DashboardPortfolioClient({
   }
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-6xl mx-auto">
+    <div className="mx-auto max-w-6xl">
       {/* Profile Summary */}
       <div className="bg-white rounded-xl border border-brand-border p-5 sm:p-6 mb-6">
         <div className="flex items-start gap-4">
@@ -419,7 +419,7 @@ export default function DashboardPortfolioClient({
                     className="p-1.5 text-muted-foreground hover:text-navy rounded-lg hover:bg-light-bg transition-colors"
                     title="GitHub"
                   >
-                    <Github className="h-4 w-4" />
+                    <Globe className="h-4 w-4" />
                   </a>
                 )}
                 <div className="flex-1" />

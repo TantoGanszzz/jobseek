@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import LocationAutocompleteInput from "@/components/location-autocomplete-input";
 import { Search, MapPin, Filter, Briefcase, Clock, DollarSign, Wifi } from "lucide-react";
 
 interface JobSearchProps {
@@ -30,13 +31,11 @@ export default function JobSearch({}: JobSearchProps) {
                 className="pl-10 h-12 bg-white border-brand-border focus:border-navy rounded-xl"
               />
             </div>
-            <div className="relative flex-1 sm:max-w-[220px]">
-              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Location"
-                className="pl-10 h-12 bg-white border-brand-border focus:border-navy rounded-xl"
-              />
-            </div>
+            <LocationAutocompleteInput
+              placeholder="Location"
+              wrapperClassName="flex-1 sm:max-w-[280px]"
+              className="h-12 bg-white border-brand-border focus:border-navy rounded-xl"
+            />
             <Button
               size="lg"
               className="bg-navy text-white hover:bg-navy-light font-medium h-12 px-8 rounded-xl cursor-pointer"
